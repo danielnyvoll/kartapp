@@ -30,12 +30,17 @@
   let activeIndex = -1;
   let searchTimer: any;
 
-  // ✅ Kun type‑filtre (skjul når på)
+  // ✅ Skjul-filtre (kun typer/partnere)
   let typeFilter = {
-    hideWash: false,
-    hideSelfservice: false,
+    hideChargingLocation: false,
+    hidePartnerPreemNo: false,
+    hidePartnerPreemSwe: false,
+    hidePartnerUnoxDk: false,
+    hidePartnerYxNo: false,
+    hideSelfService: false,
     hideTruck: false,
-    hideChargingLocation: false
+    hideUndefined: false,
+    hideWash: false
   };
 
   /* ---------- Normalisering & hjelp ---------- */
@@ -67,12 +72,18 @@
     const lastUpdated =
       s?.lastUpdated ?? s?.updatedAt ?? s?.modified ?? s?.lastModified ?? new Date().toISOString();
 
-    const stationType = s?.station?.stationType ?? s?.stationType ?? null;
+    const stationType =
+      s?.station?.stationType ??
+      s?.stationType ??
+      s?.type ?? // fallback hvis upstream bruker "type"
+      null;
 
-    return { name, lat, lng, lastUpdated, stationType };
+    const stationNumber = s?.station?.stationNumber ?? s?.stationNumber ?? 'Ukjent';
+
+    return { name, lat, lng, lastUpdated, stationType, stationNumber };
   }
 
-  // Farger
+  // Farger – beholdt opprinnelig logikk (GUL for 4 typer, ellers RØD)
   const YELLOW = { stroke: '#f57f17', fill: '#fbc02d' }; // amber
   const RED    = { stroke: '#b71c1c', fill: '#f44336' }; // red
 
@@ -82,15 +93,23 @@
     if (t === 'charginglocation' || t === 'truck' || t === 'selfservice' || t === 'wash') {
       return YELLOW; // gule som avtalt
     }
-    return RED;
+    return RED; // alle partner-typer, undefined, osv. = rød
   }
 
-  // Kun type-hide logikk
+  // Kun type/partner-hide logikk
   function passesTypeHide(n: ReturnType<typeof normalizeStation>) {
-    if (typeFilter.hideWash && eqType(n.stationType, 'wash')) return false;
-    if (typeFilter.hideSelfservice && eqType(n.stationType, 'selfservice')) return false;
-    if (typeFilter.hideTruck && eqType(n.stationType, 'truck')) return false;
-    if (typeFilter.hideChargingLocation && eqType(n.stationType, 'charginglocation')) return false;
+    const t = (n.stationType ? String(n.stationType) : '').toLowerCase();
+
+    if (typeFilter.hideChargingLocation && t === 'charginglocation') return false;
+    if (typeFilter.hidePartnerPreemNo && t === 'partnerpreemno') return false;
+    if (typeFilter.hidePartnerPreemSwe && t === 'partnerpreemswe') return false;
+    if (typeFilter.hidePartnerUnoxDk && t === 'partnerunoxdk') return false;
+    if (typeFilter.hidePartnerYxNo && t === 'partneryxno') return false;
+    if (typeFilter.hideSelfService && t === 'selfservice') return false;
+    if (typeFilter.hideTruck && t === 'truck') return false;
+    if (typeFilter.hideUndefined && (t === '' || t === 'undefined' || t === 'null' || t === 'unknown')) return false;
+    if (typeFilter.hideWash && t === 'wash') return false;
+
     return true;
   }
 
@@ -165,7 +184,8 @@
       }).bindPopup(
         `<strong>${n.name}</strong>` +
         (n.stationType ? `<br>Type: ${n.stationType}` : '') +
-        `<br>Sist oppdatert: ${new Date(n.lastUpdated).toLocaleString('no-NO')}`
+        `<br>Sist oppdatert: ${new Date(n.lastUpdated).toLocaleString('no-NO')}` +
+        `<br>Stasjonsnummer: ${n.stationNumber}`
       );
 
       markersGroup.addLayer(marker);
@@ -265,7 +285,17 @@
   }
 
   function resetTypeFilters() {
-    typeFilter = { hideWash: false, hideSelfservice: false, hideTruck: false, hideChargingLocation: false };
+    typeFilter = {
+      hideChargingLocation: false,
+      hidePartnerPreemNo: false,
+      hidePartnerPreemSwe: false,
+      hidePartnerUnoxDk: false,
+      hidePartnerYxNo: false,
+      hideSelfService: false,
+      hideTruck: false,
+      hideUndefined: false,
+      hideWash: false
+    };
     redrawMarkers();
   }
 </script>
@@ -326,7 +356,7 @@
     color: #555;
   }
 
-  /* Toolbar (venstre) – KUN type-skjul */
+  /* Toolbar (venstre) – typer/partnere */
   .toolbar {
     position: absolute;
     left: 3%;
@@ -388,22 +418,64 @@
 <div class="map-wrap">
   <div bind:this={mapEl} class="leaflet-container"></div>
 
-  <!-- Kun type-skjul (VENSTRE) -->
+  <!-- Kun type-/partner-skjul (VENSTRE) -->
   <div class="toolbar" aria-label="Skjul stasjonstyper">
-    <div class="section-title">Skjul typer</div>
-    <div class="toggle {typeFilter.hideWash ? 'on' : ''}" role="button" aria-pressed={typeFilter.hideWash} on:click={() => toggleType('hideWash')}>
-      🚫 Wash
-    </div>
-    <div class="toggle {typeFilter.hideSelfservice ? 'on' : ''}" role="button" aria-pressed={typeFilter.hideSelfservice} on:click={() => toggleType('hideSelfservice')}>
-      🚫 Selfservice
-    </div>
-    <div class="toggle {typeFilter.hideTruck ? 'on' : ''}" role="button" aria-pressed={typeFilter.hideTruck} on:click={() => toggleType('hideTruck')}>
-      🚫 Truck
-    </div>
-    <div class="toggle {typeFilter.hideChargingLocation ? 'on' : ''}" role="button" aria-pressed={typeFilter.hideChargingLocation} on:click={() => toggleType('hideChargingLocation')}>
+    <div class="section-title">Skjul typer/partnere</div>
+
+    <div class="toggle {typeFilter.hideChargingLocation ? 'on' : ''}"
+         role="button" aria-pressed={typeFilter.hideChargingLocation}
+         on:click={() => toggleType('hideChargingLocation')}>
       🚫 ChargingLocation
     </div>
 
+    <div class="toggle {typeFilter.hidePartnerPreemNo ? 'on' : ''}"
+         role="button" aria-pressed={typeFilter.hidePartnerPreemNo}
+         on:click={() => toggleType('hidePartnerPreemNo')}>
+      🚫 PartnerPreemNo
+    </div>
+
+    <div class="toggle {typeFilter.hidePartnerPreemSwe ? 'on' : ''}"
+         role="button" aria-pressed={typeFilter.hidePartnerPreemSwe}
+         on:click={() => toggleType('hidePartnerPreemSwe')}>
+      🚫 PartnerPreemSwe
+    </div>
+
+    <div class="toggle {typeFilter.hidePartnerUnoxDk ? 'on' : ''}"
+         role="button" aria-pressed={typeFilter.hidePartnerUnoxDk}
+         on:click={() => toggleType('hidePartnerUnoxDk')}>
+      🚫 PartnerUnoxDk
+    </div>
+
+    <div class="toggle {typeFilter.hidePartnerYxNo ? 'on' : ''}"
+         role="button" aria-pressed={typeFilter.hidePartnerYxNo}
+         on:click={() => toggleType('hidePartnerYxNo')}>
+      🚫 PartnerYxNo
+    </div>
+
+    <div class="toggle {typeFilter.hideSelfService ? 'on' : ''}"
+         role="button" aria-pressed={typeFilter.hideSelfService}
+         on:click={() => toggleType('hideSelfService')}>
+      🚫 SelfService
+    </div>
+
+    <div class="toggle {typeFilter.hideTruck ? 'on' : ''}"
+         role="button" aria-pressed={typeFilter.hideTruck}
+         on:click={() => toggleType('hideTruck')}>
+      🚫 Truck
+    </div>
+
+    <div class="toggle {typeFilter.hideUndefined ? 'on' : ''}"
+         role="button" aria-pressed={typeFilter.hideUndefined}
+         on:click={() => toggleType('hideUndefined')}>
+      🚫 Undefined
+    </div>
+
+    <div class="toggle {typeFilter.hideWash ? 'on' : ''}"
+         role="button" aria-pressed={typeFilter.hideWash}
+         on:click={() => toggleType('hideWash')}>
+      🚫 Wash
+    </div>
+  </div>
     <button class="reset-btn" on:click={resetTypeFilters} title="Nullstill type-filtre">Nullstill</button>
   </div>
 
@@ -450,4 +522,3 @@
       Viser {visibleCount} stasjoner
     {/if}
   </div>
-</div>
